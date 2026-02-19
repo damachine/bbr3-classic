@@ -1,26 +1,35 @@
 # bbr_classic-multi
 
-BBRv1 (TCP BBR Classic) as out-of-tree kernel module for kernels patched with the BBR3 patch (e.g. linux-tkg, linux-cachyos). Supports manual build, DKMS, and PKGBUILD installation.
+On BBRv3-patched kernels (e.g. CachyOS, TKG, Zen, Liquorix, and Xanmod), BBRv1 is replaced by BBRv3.
+This module brings mainline BBRv1 back as `bbr_classic`, so you can use both side by side.
 
-On BBR3-patched kernels, BBRv1 is replaced by BBRv3. This module brings BBRv1 back as `bbr_classic`, so you can use both side by side.
+## Details
 
-See also: [CachyOS/linux-cachyos#706 (comment)][perf-ref] for benchmark results.
+The unmodified BBRv1 source `tcp_bbr.c` from upstream Linux 6.19 — the version *before* the BBRv3 patch is applied. During build, bbr_classic-multi generates `tcp_bbr_classic.c` with the following patches:
+
+- rename all occurrences of the string literal `bbr` to `bbr_classic` in the copied source file — module name visible in `sysctl` and `modprobe` as `"bbr_classic"`
+- rename struct to avoid symbol conflicts with in-tree BBRv3 `struct bbr`
+- replace BTF kfunc registration with a no-op to avoid build errors on kernels with `CONFIG_DEBUG_INFO_BTF_MODULES=y`
+- checks for BBRv3-patched kernel which replaces the `min_tso_segs` field with `tso_segs` with a different signature, so the original BBRv1 reference no longer compiles against BBR3-patched kernel
+
+The BBRv1 algorithm itself is untouched.
+
+See also: [CachyOS/linux-cachyos#706 (comment)] for benchmark results.
+
+Supports manual build, DKMS, and PKGBUILD installation.
 
 ## Build (manual)
 
-Requires kernel headers.
+Builds and installs as kernel module. Requires kernel headers.
 
 ```sh
 git clone https://github.com/damachine/bbr_classic-multi.git
 cd bbr_classic-multi
-make
-sudo make load      # test
-sudo make install   # permanent (no DKMS)
+make                # download tcp_bbr.c and build the module
+sudo make install   # install module permanently (no DKMS)
 ```
 
-## Install via DKMS
-
-Builds and installs.
+## Install as DKMS package
 
 ```sh
 git clone https://github.com/damachine/bbr_classic-multi.git
@@ -34,9 +43,7 @@ Uninstall:
 sudo make dkms-uninstall
 ```
 
-## Install via PKGBUILD (Arch / CachyOS)
-
-Builds and installs a DKMS package locally.
+## Install **bbr-classic-dkms** via PKGBUILD (Arch-based distros)
 
 ```sh
 git clone https://github.com/damachine/bbr_classic-multi.git
@@ -44,10 +51,18 @@ cd bbr_classic-multi
 makepkg -si
 ```
 
+Uninstall:
+
+```sh
+pacman -R bbr-classic-dkms
+```
+
 ## Load & activate
 
 ```sh
+# load module
 sudo modprobe tcp_bbr_classic
+# set Qdisc and congestion control algorithm
 sudo sysctl -w net.core.default_qdisc=fq
 sudo sysctl -w net.ipv4.tcp_congestion_control=bbr_classic
 ```
@@ -55,16 +70,26 @@ sudo sysctl -w net.ipv4.tcp_congestion_control=bbr_classic
 Verify:
 
 ```sh
+# check module info
+modinfo tcp_bbr_classic
+# check module is loaded
+lsmod | grep bbr_classic
+# check congestion control algorithm and Qdisc
 sysctl net.ipv4.tcp_congestion_control
+sysctl net.core.default_qdisc
 ```
 
 ## Persistent
 
 ```sh
+# add sysctl config file for persistent settings
 sudo tee /etc/sysctl.d/99-bbr-classic.conf << EOF2
+# Set Qdisc (Fair Queue)
 net.core.default_qdisc=fq
+# Enable BBR Classic as TCP Congestion Control
 net.ipv4.tcp_congestion_control=bbr_classic
 EOF2
+# reload sysctl settings
 sudo sysctl --system
 ```
 
@@ -79,16 +104,6 @@ sudo make uninstall        # remove permanently installed module
 sudo make dkms-install     # install via DKMS (auto-rebuild on kernel update)
 sudo make dkms-uninstall   # remove DKMS installation
 ```
-
-## How it works
-
-`tcp_bbr.c` is the unmodified BBRv1 source from upstream Linux 6.19 — the version *before* the BBR3 patch is applied. During build, `Makefile` generates `tcp_bbr_classic.c` with the following patches:
-- `"bbr"` → `"bbr_classic"` — module name visible to `sysctl` and `modprobe`
-- `struct bbr` → `struct bbr_classic` — avoids symbol collision with the kernel's built-in BBRv3 module
-- `register_btf_kfunc_id_set` call replaced with `ret = 0` — out-of-tree modules cannot resolve BTF kfunc IDs against vmlinux, so `insmod` fails with `-EINVAL` on kernels built with `CONFIG_DEBUG_INFO_BTF_MODULES=y` (CachyOS, TKG, Zen, Liquorix)
-- `.min_tso_segs` line commented out — the BBR3 patch renames this field to `.tso_segs` with a different signature, so the original BBRv1 reference no longer compiles against BBR3-patched kernel headers
-
-The BBRv1 algorithm itself is untouched.
 
 ## Testing performance
 
@@ -109,5 +124,3 @@ Original idea and approach by [cmspam/bbr_classic](https://github.com/cmspam/bbr
 ## License
 
 GPL-2.0
-
-[perf-ref]: https://github.com/CachyOS/linux-cachyos/issues/706#issuecomment-3897122950
