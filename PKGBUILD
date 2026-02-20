@@ -13,7 +13,7 @@ source=("tcp_bbr.c::https://raw.githubusercontent.com/torvalds/linux/v${pkgver}/
         "Makefile"
         "dkms.conf")
 sha256sums=('5e468692502251ada233ce249eb5c98b155846903269d04e0505500eefd2e99f'
-            'ddd54cbc1b02ac7fa56d99b16ced4e32e24ef0b1c7f8ba28ed1f86f942ae6758'
+            '5881ddacf30c818f36d2fd1e5026ae85ea74deefe84541eadb244dfef6f241fc'
             '7acc6421f5b2b131967279dd9bf85932565c70c16a565f1158d256667cd35c24')
 
 package() {
